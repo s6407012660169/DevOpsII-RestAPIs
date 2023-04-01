@@ -1,53 +1,79 @@
 from flask import Flask, request, jsonify
+import sqlite3
+import os
+
+db_folder = os.path.join(os.path.dirname(__file__), "products_db.db")
 
 app = Flask(__name__)
 
-products = [
-    {"id":'1', "name":'Laptop', "category":'Electronics', "price": 30000, "instock": 200},
-    {"id":'2', "name":'Smart Watch', "category":'Wearables', "price": 8000, "instock": 100},
-    {"id":'3', "name":'Monitor', "category":'Electronics', "price": 12000, "instock": 150},
-]
-
 def find_by_product_id(id):
-    data = [x for x in products if x ['id']==id]
-    return data
-
-def find_product_index(id):
-    return next((i for i, x in enumerate(products) if x["id"] == id), None)
+    conn = sqlite3.connect(db_folder)
+    sql = """
+        SELECT *
+        FROM products
+        WHERE id=?
+    """
+    val = (id,)
+    cursor = conn.execute(sql, val)
+    columns = cursor.fetchone()
+    record = {
+        'id': columns[0],
+        'name': columns[1],
+        'category': columns[2],
+        'price': columns[3],
+        'instock': columns[4],
+    }
+    conn.close()
+    return record
 
 # Get all Products
 @app.route('/products', methods=["GET"])
 def get_products():
-    return jsonify(products)
+    data = []
+    conn = sqlite3.connect(db_folder)
+    sql = """
+        SELECT *
+        FROM products
+        ORDER BY id
+    """
+    cursor = conn.execute(sql)
+    rows = cursor.fetchall()
+    for row in rows:
+        record = {
+            'id': row[0],
+            'name': row[1],
+            'category': row[2],
+            'price': row[3],
+            'instock': row[4]
+        }
+        data.append(record)
+    conn.close()
+    return data
 
 # Get Product by Id
 @app.route('/product/<id>', methods=["GET"])
 def get_product_by_id(id):
     data =  find_by_product_id(id)
-    return jsonify(data)
+    return data
 
 # Add Product
 @app.route('/product', methods = ["POST"])
 def post_product():
-    id = request.form.get('id')
     name = request.form.get('name')
     category = request.form.get('category')
     price = request.form.get('price')
     instock = request.form.get('instock')
 
-    new_data = {
-        "id": id,
-        "name": name,
-        "category": category,
-        "price": price,
-        "instock": instock,
-    }
-
-    if (find_by_product_id(id)):
-        return {"eror": "Product Already Exists."}, id
-    else:
-        products.append(new_data)
-        return jsonify(products)
+    conn = sqlite3.connect(db_folder)
+    sql = """
+        INSERT INTO products(name, category, price, instock)
+        VALUES(?, ?, ?, ?)
+    """
+    val = (name, category, price, instock, )
+    conn.execute(sql, val)
+    conn.commit()
+    conn.close()
+    return "Created successfully"
 
 # Delete Product
 @app.route('/product/<id>', methods = ['DELETE'])
@@ -56,43 +82,39 @@ def delete_product(id):
     if not data:
         return {"error": "product not found"}, 404
     else:
-        products.remove(data[0]) 
-        return products, 200
-
-@app.route('/product/<id>', methods = ["PATCH"])
-def patch_product(id):
-    matching_index = find_product_index(id)
-    if matching_index < 0:
-        return {"error": "product not found"}, 404
-    
-    instock = request.form.get('instock')
-
-    temp_product = products[matching_index]
-    temp_product["instock"] = int(instock)
-    products[matching_index] = temp_product
-
-    return jsonify(products)
+        conn = sqlite3.connect(db_folder)
+        sql = """
+            DELETE FROM products
+            WHERE id=?
+        """
+        val = (id)
+        conn.execute(sql, val)
+        conn.commit()
+        conn.close()
+        return 'Deleted successfully'
 
 @app.route('/product/<id>', methods = ["PUT"])
-def put_product(id):
-    matching_index = find_product_index(id)
-    if matching_index < 0:
+def patch_product(id):
+    product = find_by_product_id(id)
+    if not product:
         return {"error": "product not found"}, 404
-
+    
     name = request.form.get('name')
     category = request.form.get('category')
     price = request.form.get('price')
     instock = request.form.get('instock')
 
-    temp_product = products[matching_index]
-    temp_product["name"] = name
-    temp_product["category"] = category
-    temp_product["price"] = int(price)
-    temp_product["instock"] = int(instock)
-    products[matching_index] = temp_product
-
-    return jsonify(products)
-
+    conn = sqlite3.connect(db_folder)
+    sql = """
+        UPDATE products
+        SET name=?, category=?, price=?, instock=?
+        WHERE id=?
+    """
+    val = (name, category, price, instock, id)
+    conn.execute(sql, val)
+    conn.commit()
+    conn.close()
+    return "Updated successfully"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug= True) 
